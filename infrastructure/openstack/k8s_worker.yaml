@@ -1,0 +1,41 @@
+heat_template_version: 2015-04-30
+
+parameters:
+    key_name:
+      type: string
+    image_id:
+      type: string
+    flavor:
+      type: string
+    network_name:
+      type: string
+    subnet_name:
+      type: string
+    server_name:
+      type: string
+    ip:
+      type: string
+
+resources:
+  instance_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: network_name }
+      fixed_ips: [{ "subnet": { get_param: subnet_name}, "ip_address": { get_param: ip }}]
+      security_groups:
+        - kubernetes_internal_sg
+
+  instance:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: server_name }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: instance_port }
+      block_device_mapping_v2:
+        - device_name: vda
+          delete_on_termination: true
+          disk_bus: virtio
+          image: { get_param: image_id }
+          volume_size: 100

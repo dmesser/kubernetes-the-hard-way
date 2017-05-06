@@ -1,0 +1,9 @@
+parameters:
+    key_name: dmesser
+    image_id: fedora-25-minimal
+    flavor_master: t2.medium
+    flavor_worker: t2.medium
+    network_name: kubernetes-net
+    subnet_name: kubernetes-subnet
+    subnet_dns: 8.8.8.8
+    uplink: external-net

@@ -1,0 +1,155 @@
+heat_template_version: 2015-04-30
+
+description: >
+  A template to deploy the basic infrastructure needed to complete the
+  kubernetes-the-hard-way tutorial. This will generate 3 masters, 3 worker nodes,
+  as well as the necessary networking and firewalling.
+
+parameters:
+  key_name:
+    type: string
+    label: Key Name
+    description: Name of key-pair to be used for worker and master instances
+    default: dmesser
+  image_id:
+    type: string
+    label: Image ID
+    description: Image to be used for worker and master instances
+    default: fedora-25-minimal
+  flavor_master:
+    type: string
+    label: Master Instance Type
+    description: Type of instance (flavor) to be used for masters
+    default: m1.normal
+  flavor_worker:
+    type: string
+    label: Worker Instance Type
+    description: Type of instance (flavor) to be used for workers
+    default: m1.normal
+  network_name:
+    type: string
+    label: Network Name
+    description: Name of the network used for Kubernetes
+    default: kubernetes-net
+  subnet_name:
+    type: string
+    label: Subnet Name
+    description: Name of the subnet used for Kubernetes
+    default: kubernetes-subnet
+  subnet_dns:
+    type: string
+    label: Subnet DNS
+    description: DNS server to propagate in subnet
+    default: 8.8.8.8
+  uplink:
+    type: string
+    label: Uplink network name or ID
+    description: Uplink network with floating IP addresses.
+    default: external-net
+
+
+resources:
+  kubernetes_network:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: network_name }
+
+  kubernetes_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: { get_param: subnet_name }
+      network_id: { get_resource: kubernetes_network }
+      cidr: 10.240.0.0/24
+      dns_nameservers:
+        - { get_param: subnet_dns }
+
+  kubernetes_router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: uplink }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: kubernetes_router }
+      subnet: { get_resource: kubernetes_subnet }
+
+  kubernetes_internal_firewall:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: kubernetes_internal_sg
+      rules:
+        - protocol: tcp
+          port_range_min: 1
+          port_range_max: 65535
+          remote_ip_prefix: 10.240.0.0/24
+        - protocol: tcp
+          port_range_min: 1
+          port_range_max: 65535
+          remote_ip_prefix: 10.200.0.0/16
+        - protocol: udp
+          port_range_min: 1
+          port_range_max: 65535
+          remote_ip_prefix: 10.240.0.0/24
+        - protocol: udp
+          port_range_min: 1
+          port_range_max: 65535
+          remote_ip_prefix: 10.200.0.0/16
+        - protocol: icmp
+
+  kubernetes_external_firewall:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: kubernetes_external_sg
+      rules:
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 3389
+          port_range_max: 3389
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 6443
+          port_range_max: 6443
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 8080
+          port_range_max: 8080
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: icmp
+
+  masters:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 3
+      resource_def:
+        type: "k8s_master.yaml"
+        properties:
+          server_name: controller%index%
+          key_name: { get_param: key_name }
+          image_id: { get_param: image_id }
+          flavor: { get_param: flavor_master }
+          network_name: { get_param: network_name }
+          subnet_name: { get_param: subnet_name }
+          ip: 10.240.0.1%index%
+          uplink: { get_param: uplink }
+    depends_on: [kubernetes_network, kubernetes_subnet, kubernetes_external_firewall, kubernetes_internal_firewall]
+
+  workers:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 3
+      resource_def:
+        type: "k8s_worker.yaml"
+        properties:
+          server_name: worker%index%
+          key_name: { get_param: key_name }
+          image_id: { get_param: image_id }
+          flavor: { get_param: flavor_worker }
+          network_name: { get_param: network_name }
+          subnet_name: { get_param: subnet_name }
+          ip: 10.240.0.2%index%
+    depends_on: [kubernetes_network, kubernetes_subnet, kubernetes_external_firewall, kubernetes_internal_firewall]
