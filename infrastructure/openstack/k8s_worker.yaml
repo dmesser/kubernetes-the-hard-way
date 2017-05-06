@@ -21,7 +21,9 @@ resources:
     type: OS::Neutron::Port
     properties:
       network: { get_param: network_name }
-      fixed_ips: [{ "subnet": { get_param: subnet_name}, "ip_address": { get_param: ip }}]
+      fixed_ips:
+        - subnet_id: { get_param: subnet_name}
+          ip_address: { get_param: ip }
       security_groups:
         - kubernetes_internal_sg
 
