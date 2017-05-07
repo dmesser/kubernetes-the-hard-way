@@ -11,6 +11,8 @@ parameters:
       type: string
     subnet_name:
       type: string
+    lb_pool_id:
+      type: string
     server_name:
       type: string
     ip:
@@ -22,7 +24,7 @@ resources:
   instance_port:
     type: OS::Neutron::Port
     properties:
-      network: { get_param: network_name }
+      network_id: { get_param: network_name }
       fixed_ips:
         - subnet_id: { get_param: subnet_name}
           ip_address: { get_param: ip }
@@ -55,3 +57,19 @@ resources:
     properties:
       floatingip_id: { get_resource: floating_ip }
       port_id: { get_resource: instance_port }
+
+  pool_member:
+    type: OS::Neutron::LBaaS::PoolMember
+    properties:
+      pool: { get_param: lb_pool_id }
+      address: { get_attr: [ instance, networks, { get_param: network_name }, 0 ] }
+      protocol_port: 6443
+      subnet: { get_param: subnet_name }
+
+outputs:
+  instance_ip:
+    description: Internal IP address of the deployed master
+    value: { get_attr: [instance, networks, 0, address] }
+  floating_ip:
+    description: Internal IP address of the deployed master instance
+    value: { get_attr: [instance, accessIPv4] }

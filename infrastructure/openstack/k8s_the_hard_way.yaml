@@ -46,6 +46,11 @@ parameters:
     label: Uplink network name or ID
     description: Uplink network with floating IP addresses.
     default: external-net
+  kubernetes_internal_address:
+    type: string
+    label: Internal VIP
+    description: Internally load-balanced VIP of the Kubernetes cluster
+    default: 10.240.0.254
 
 
 resources:
@@ -132,11 +137,12 @@ resources:
           key_name: { get_param: key_name }
           image_id: { get_param: image_id }
           flavor: { get_param: flavor_master }
-          network_name: { get_param: network_name }
-          subnet_name: { get_param: subnet_name }
+          network_name: { get_attr: [ kubernetes_network, name ]}
+          subnet_name: { get_attr: [ kubernetes_subnet, name ]}
+          lb_pool_id: { get_resource: lb_pool }
           ip: 10.240.0.1%index%
           uplink: { get_param: uplink }
-    depends_on: [kubernetes_network, kubernetes_subnet, kubernetes_external_firewall, kubernetes_internal_firewall]
+    depends_on: [ kubernetes_external_firewall, kubernetes_internal_firewall ]
 
   workers:
     type: OS::Heat::ResourceGroup
@@ -149,7 +155,54 @@ resources:
           key_name: { get_param: key_name }
           image_id: { get_param: image_id }
           flavor: { get_param: flavor_worker }
-          network_name: { get_param: network_name }
-          subnet_name: { get_param: subnet_name }
+          network_name: { get_attr: [ kubernetes_network, name ]}
+          subnet_name: { get_attr: [ kubernetes_subnet, name ]}
           ip: 10.240.0.2%index%
-    depends_on: [kubernetes_network, kubernetes_subnet, kubernetes_external_firewall, kubernetes_internal_firewall]
+    depends_on: [ kubernetes_external_firewall, kubernetes_internal_firewall]
+
+
+  lb_monitor:
+    type: OS::Neutron::LBaaS::HealthMonitor
+    properties:
+      delay: 5
+      type: TCP
+      timeout: 5
+      max_retries: 3
+      pool: { get_resource: lb_pool }
+
+  lb_pool:
+    type: OS::Neutron::LBaaS::Pool
+    properties:
+      lb_algorithm: ROUND_ROBIN
+      protocol: TCP
+      listener: { get_resource: lb_listener }
+
+  lb_listener:
+    type: OS::Neutron::LBaaS::Listener
+    properties:
+      loadbalancer: { get_resource: lb }
+      protocol: TCP
+      protocol_port: 6443
+
+  lb:
+    type: OS::Neutron::LBaaS::LoadBalancer
+    properties:
+      vip_subnet: { get_resource: kubernetes_subnet }
+      vip_address: { get_param: kubernetes_internal_address }
+    depends_on: kubernetes_subnet
+
+  kubernetes_external_address:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: uplink }
+
+  kubernetes_external_address_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: kubernetes_external_address }
+      port_id: { get_attr: [ lb,  vip_port_id ] }
+
+outputs:
+  kubernetes_cluster_address:
+    description: Externall load-balanced VIP of the Kubernetes cluster
+    value: { get_attr: [kubernetes_external_address, floating_ip_address] }
