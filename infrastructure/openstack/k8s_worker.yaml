@@ -17,6 +17,16 @@ parameters:
       type: string
 
 resources:
+  instance_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: network_name }
+      fixed_ips:
+        - subnet_id: { get_param: subnet_name}
+          ip_address: { get_param: ip }
+      security_groups:
+        - kubernetes_internal_sg
+
   instance:
     type: OS::Nova::Server
     properties:
@@ -24,8 +34,7 @@ resources:
       flavor: { get_param: flavor }
       key_name: { get_param: key_name }
       networks:
-        - fixed_ip: { get_param: ip }
-          network: { get_param: network_name }
+        - port: { get_resource: instance_port }
       security_groups:
         - kubernetes_internal_sg
       block_device_mapping_v2:
